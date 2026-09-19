@@ -1,0 +1,14 @@
+{
+  "name": "robattle-3d",
+  "version": "1.0.0",
+  "description": "A browser robot-battler: build a medabot from parts and a medal, explore Medarra Village, and fight live 3D Robattles where the part you hit is the part that breaks.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8777 --bind 127.0.0.1",
+    "test": "node tests/combat.test.mjs && node tests/progression.test.mjs",
+    "balance": "node tests/simulate.mjs 30"
+  },
+  "keywords": ["game", "threejs", "webgl", "robot", "arena"],
+  "license": "MIT"
+}

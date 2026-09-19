@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ROBATTLE 3D — Medarra Circuit</title>
+<meta name="description" content="A browser robot-battler: build a medabot from parts and a medal, explore Medarra Village, and fight live 3D Robattles where the part you hit is the part that breaks.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+<link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div id="overlay" aria-hidden="true"></div>
+
+  <header id="topbar">
+    <div class="brand">
+      <span class="brand-mark">◈</span>
+      <span class="brand-text">ROBATTLE<span class="brand-3d">3D</span></span>
+      <span class="brand-sub">Medarra Circuit</span>
+    </div>
+    <nav id="nav" aria-label="Main">
+      <button data-panel="garage">Garage</button>
+      <button data-panel="shop">Shop</button>
+      <button data-panel="gym">Gym</button>
+      <button data-panel="tournaments">Tournaments</button>
+      <button data-panel="leaderboard">Ranks</button>
+      <button data-panel="events">Events</button>
+      <button data-panel="help">Help</button>
+    </nav>
+    <div class="wallet">
+      <div class="wallet-item"><span class="wallet-label">Rodo</span><strong id="stat-rodo">0</strong></div>
+      <div class="wallet-item"><span class="wallet-label">Rating</span><strong id="stat-rating">0</strong></div>
+      <div class="wallet-item"><span class="wallet-label">Record</span><strong id="stat-record">0–0</strong></div>
+    </div>
+  </header>
+
+  <!-- Village doorway prompt -->
+  <div id="prompt" class="hidden">
+    <div class="prompt-name"></div>
+    <div class="prompt-blurb"></div>
+    <div class="prompt-key"><kbd>E</kbd> to enter</div>
+  </div>
+
+  <!-- Battle HUD -->
+  <div id="hud" class="hidden">
+    <div id="hud-teams">
+      <section class="team-panel" id="team-ally"><h3>Your Team</h3><div class="team-bots"></div></section>
+      <section class="team-panel" id="team-foe"><h3>Opponent</h3><div class="team-bots"></div></section>
+    </div>
+    <div id="crosshair"><span></span></div>
+    <div id="hud-markers"></div>
+    <div id="hud-bottom">
+      <div id="self-status">
+        <div class="self-name"></div>
+        <div class="self-parts"></div>
+      </div>
+      <div id="action-bar"></div>
+      <div id="meters">
+        <div class="meter"><span class="meter-label">Energy</span><div class="meter-track"><div class="meter-fill energy"></div></div></div>
+        <div class="meter"><span class="meter-label">Medaforce</span><div class="meter-track"><div class="meter-fill force"></div></div></div>
+      </div>
+    </div>
+    <div id="battle-clock">0:00</div>
+    <div id="killfeed"></div>
+    <button id="forfeit" title="Give up this Robattle">Forfeit</button>
+  </div>
+
+  <div id="panels" class="hidden" role="dialog" aria-modal="true"></div>
+  <div id="toasts" aria-live="polite"></div>
+
+  <div id="boot">
+    <div class="boot-inner">
+      <div class="boot-mark">◈</div>
+      <h1>ROBATTLE <span>3D</span></h1>
+      <p class="boot-tag">Build a medabot. Walk the village. Fight for parts.</p>
+      <p class="boot-status">Warming up the arena…</p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="assets/js/main.js"></script>
+<noscript>
+  <div class="noscript">ROBATTLE 3D is a real-time 3D game and needs JavaScript and WebGL enabled.</div>
+</noscript>
+</body>
+</html>
