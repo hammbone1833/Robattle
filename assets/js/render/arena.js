@@ -14,6 +14,8 @@ import { RIG, muzzleOf, partCenter } from '../core/rig.js';
 import { FAMILIES } from '../data/parts.js';
 import { readyActions, canMedaforce, moveSpeed, legStyle } from '../core/combat.js';
 import { basis, resolveOcclusion, SHOULDER } from './camera.js';
+import { InputController } from '../core/input.js';
+import { QUALITY, detectQuality } from '../core/device.js';
 
 const KEY_TO_SLOT = {
   Digit1: 'head', KeyQ: 'head',
@@ -22,6 +24,8 @@ const KEY_TO_SLOT = {
   Digit4: 'legs', ShiftLeft: 'legs', ShiftRight: 'legs', Space: 'legs',
   KeyF: 'medaforce',
 };
+const MOUSE_TO_SLOT = { 0: 'rarm', 2: 'larm', 1: 'head' };
+const BUFFER_SECONDS = 0.5;   // how long a press survives while the robot is mid-action
 
 export class ArenaScene {
   /**
@@ -29,23 +33,25 @@ export class ArenaScene {
    * @param {import('../core/combat.js').Combat} combat
    * @param {{overlay:HTMLElement, canvas:HTMLCanvasElement}} dom
    */
-  constructor(renderer, combat, dom) {
+  constructor(renderer, combat, dom, { quality = detectQuality(), blocked } = {}) {
     this.renderer = renderer;
     this.combat = combat;
     this.dom = dom;
     this.arena = combat.arena;
+    this.quality = quality;
+    this.blocked = blocked ?? (() => false);
     this.disposed = false;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.arena.sky);
-    this.scene.fog = new THREE.FogExp2(this.arena.fog, this.arena.fogDensity ?? 0.014);
+    this.scene.fog = new THREE.FogExp2(this.arena.fog, (this.arena.fogDensity ?? 0.014) * quality.fogScale);
 
-    this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.1, 400);
+    this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.1, quality.drawDistance);
     this.yaw = 0;
     this.pitch = -0.06;
     this.camDist = 6.4;
 
-    this.fx = new Fx(this.scene, dom.overlay);
+    this.fx = new Fx(this.scene, dom.overlay, quality);
     this.robots = new Map();
     this.clockOffset = 0;
 
@@ -53,6 +59,7 @@ export class ArenaScene {
     this.buildRobots();
     this.bindInput();
 
+    this.buffered = null;
     this.aimPoint = new THREE.Vector3();
     this.raycaster = new THREE.Raycaster();
     this._forward = new THREE.Vector3();
@@ -80,8 +87,8 @@ export class ArenaScene {
 
     const sun = new THREE.DirectionalLight(0xfff2dd, 1.5);
     sun.position.set(18, 30, 12);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.castShadow = this.quality.shadows;
+    sun.shadow.mapSize.set(this.quality.shadowMapSize, this.quality.shadowMapSize);
     const d = Math.max(hw, hd) + 6;
     Object.assign(sun.shadow.camera, { left: -d, right: d, top: d, bottom: -d, near: 1, far: 90 });
     sun.shadow.camera.updateProjectionMatrix();
@@ -137,7 +144,8 @@ export class ArenaScene {
 
     const standMat = new THREE.MeshStandardMaterial({ color: a.grid, roughness: 0.9, metalness: 0.05 });
     const crowdGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-    const crowd = new THREE.InstancedMesh(crowdGeo, new THREE.MeshStandardMaterial({ roughness: 1 }), 480);
+    const crowdMax = this.quality.crowd;
+    const crowd = new THREE.InstancedMesh(crowdGeo, new THREE.MeshStandardMaterial({ roughness: 1 }), Math.max(1, crowdMax));
     let ci = 0;
     const m4 = new THREE.Matrix4();
     const color = new THREE.Color();
@@ -154,7 +162,7 @@ export class ArenaScene {
         stepX.receiveShadow = true;
         this.scene.add(stepX);
 
-        for (let i = 0; i < 40 && ci < 480; i++) {
+        for (let i = 0; i < 40 && ci < crowdMax; i++) {
           const px = (Math.random() - 0.5) * (a.width + 4);
           m4.makeTranslation(px, y + 0.3, side * (hd + out));
           crowd.setMatrixAt(ci, m4);
@@ -164,6 +172,7 @@ export class ArenaScene {
       }
     }
     crowd.count = ci;
+    crowd.visible = ci > 0;
     crowd.instanceMatrix.needsUpdate = true;
     if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true;
     this.scene.add(crowd);
@@ -208,40 +217,21 @@ export class ArenaScene {
   /* --------------------------------------------------------------- input */
 
   bindInput() {
-    this.keys = new Set();
-    this.pointerLocked = false;
-    this.dragging = false;
+    this.input = new InputController(this.dom.canvas, {
+      keyActions: KEY_TO_SLOT,
+      mouseActions: MOUSE_TO_SLOT,
+      blocked: this.blocked,
+      onAction: (slot) => this.fire(slot),
+    });
+    this.input.attach();
+  }
 
-    this._onKeyDown = (e) => {
-      if (e.repeat) return;
-      this.keys.add(e.code);
-      const slot = KEY_TO_SLOT[e.code];
-      if (slot) { e.preventDefault(); this.fire(slot); }
-    };
-    this._onKeyUp = (e) => this.keys.delete(e.code);
-    this._onMouseDown = (e) => {
-      if (!this.pointerLocked) { this.dom.canvas.requestPointerLock?.(); this.dragging = true; return; }
-      if (e.button === 0) this.fire('rarm');
-      if (e.button === 2) this.fire('larm');
-      if (e.button === 1) { e.preventDefault(); this.fire('head'); }
-    };
-    this._onMouseUp = () => { this.dragging = false; };
-    this._onMouseMove = (e) => {
-      if (!this.pointerLocked && !this.dragging) return;
-      const sx = e.movementX ?? 0, sy = e.movementY ?? 0;
-      this.yaw -= sx * 0.0026;
-      this.pitch = Math.max(-0.75, Math.min(0.55, this.pitch - sy * 0.0022));
-    };
-    this._onLockChange = () => { this.pointerLocked = document.pointerLockElement === this.dom.canvas; };
-    this._onContext = (e) => e.preventDefault();
-
-    window.addEventListener('keydown', this._onKeyDown);
-    window.addEventListener('keyup', this._onKeyUp);
-    this.dom.canvas.addEventListener('mousedown', this._onMouseDown);
-    window.addEventListener('mouseup', this._onMouseUp);
-    window.addEventListener('mousemove', this._onMouseMove);
-    document.addEventListener('pointerlockchange', this._onLockChange);
-    this.dom.canvas.addEventListener('contextmenu', this._onContext);
+  /** Apply accumulated look from mouse, trackpad or a dragging thumb. */
+  applyLook() {
+    const { dx, dy } = this.input.consumeLook();
+    if (!dx && !dy) return;
+    this.yaw -= dx * 0.0026;
+    this.pitch = Math.max(-0.75, Math.min(0.55, this.pitch - dy * 0.0022));
   }
 
   /** Fire a slot along the current aim. Returns the engine's verdict for HUD feedback. */
@@ -250,8 +240,33 @@ export class ArenaScene {
     if (!bot || !bot.functional || this.combat.finished) return 'unavailable';
     const dir = this.aimDirectionFrom(bot, slot);
     const verdict = this.combat.tryAction(bot.id, slot, dir);
-    if (verdict !== true) this.onRefused?.(slot, verdict);
+
+    if (verdict === 'busy') {
+      // The lock between actions is a fraction of a second. Dropping a press that lands
+      // inside it makes the controls feel like they are ignoring you, so hold it briefly
+      // and fire the moment the robot is free. Only 'busy' is buffered -- a part on a
+      // two-second cooldown would fire at some surprising later moment.
+      //
+      // The deadline is in simulation seconds, not wall-clock: it is waiting on the
+      // robot's action lock, which is sim time, and the two drift apart whenever the
+      // sim is paused behind a panel or the frame rate dips.
+      this.buffered = { slot, until: this.combat.time + BUFFER_SECONDS };
+    } else {
+      this.buffered = null;
+      if (verdict !== true) this.onRefused?.(slot, verdict);
+    }
     return verdict;
+  }
+
+  /** Release a buffered press as soon as the robot can act on it. */
+  flushBuffered(player) {
+    if (!this.buffered) return;
+    if (this.combat.time > this.buffered.until) { this.buffered = null; return; }
+    if (!player || !player.functional) { this.buffered = null; return; }
+    if (player.windup || player.lock > this.combat.time) return;
+    const { slot } = this.buffered;
+    this.buffered = null;
+    this.fire(slot);
   }
 
   /**
@@ -359,6 +374,8 @@ export class ArenaScene {
     const combat = this.combat;
     const player = combat.playerBot;
 
+    this.applyLook();
+    this.flushBuffered(player);
     if (player && player.functional && !combat.finished) {
       this.readMovement(player, dt);
     } else if (player) {
@@ -373,13 +390,7 @@ export class ArenaScene {
   }
 
   readMovement(player, dt) {
-    const k = this.keys;
-    let fwd = 0, strafe = 0;
-    if (k.has('KeyW') || k.has('ArrowUp')) fwd += 1;
-    if (k.has('KeyS') || k.has('ArrowDown')) fwd -= 1;
-    if (k.has('KeyD') || k.has('ArrowRight')) strafe += 1;
-    if (k.has('KeyA') || k.has('ArrowLeft')) strafe -= 1;
-
+    const { fwd, strafe } = this.input.moveAxis();
     // Movement is relative to where the camera is looking, like any third-person game.
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     const mx = sin * fwd + cos * strafe;
@@ -497,14 +508,7 @@ export class ArenaScene {
   dispose() {
     this.disposed = true;
     this.unsubscribe?.();
-    window.removeEventListener('keydown', this._onKeyDown);
-    window.removeEventListener('keyup', this._onKeyUp);
-    this.dom.canvas.removeEventListener('mousedown', this._onMouseDown);
-    window.removeEventListener('mouseup', this._onMouseUp);
-    window.removeEventListener('mousemove', this._onMouseMove);
-    document.removeEventListener('pointerlockchange', this._onLockChange);
-    this.dom.canvas.removeEventListener('contextmenu', this._onContext);
-    if (document.pointerLockElement === this.dom.canvas) document.exitPointerLock?.();
+    this.input?.detach();
     this.fx.dispose();
     this.scene.traverse((o) => {
       if (o.isMesh) {

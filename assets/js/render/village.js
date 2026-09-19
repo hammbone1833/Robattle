@@ -14,6 +14,8 @@ import * as THREE from '../../../vendor/three.module.js';
 import { buildRobot, animateRobot } from './robot.js';
 import { familyLoadout } from '../data/parts.js';
 import { basis, resolveOcclusion, SHOULDER } from './camera.js';
+import { InputController } from '../core/input.js';
+import { detectQuality } from '../core/device.js';
 
 export const LANDMARKS = [
   {
@@ -57,18 +59,20 @@ export const LANDMARKS = [
 const WORLD = { half: 32 };
 
 export class VillageScene {
-  constructor(renderer, dom, { loadout, onPrompt }) {
+  constructor(renderer, dom, { loadout, onPrompt, quality = detectQuality(), blocked }) {
     this.renderer = renderer;
     this.dom = dom;
     this.onPrompt = onPrompt;
+    this.quality = quality;
+    this.blocked = blocked ?? (() => false);
     this.disposed = false;
     this.nearby = null;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x9fc4e2);
-    this.scene.fog = new THREE.FogExp2(0xbcd6ea, 0.0125);
+    this.scene.fog = new THREE.FogExp2(0xbcd6ea, 0.0125 * quality.fogScale);
 
-    this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 400);
+    this.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, quality.drawDistance);
     this.yaw = Math.PI * 1.25;
     this.pitch = -0.14;
 
@@ -87,8 +91,8 @@ export class VillageScene {
     this.scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xfff0d8, 1.45);
     sun.position.set(24, 34, 16);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.castShadow = this.quality.shadows;
+    sun.shadow.mapSize.set(this.quality.shadowMapSize, this.quality.shadowMapSize);
     Object.assign(sun.shadow.camera, { left: -44, right: 44, top: 44, bottom: -44, near: 1, far: 110 });
     sun.shadow.camera.updateProjectionMatrix();
     sun.shadow.bias = -0.0015;
@@ -252,55 +256,37 @@ export class VillageScene {
   /* --------------------------------------------------------------- input */
 
   bindInput() {
-    this.keys = new Set();
-    this.pointerLocked = false;
-    this.dragging = false;
+    this.input = new InputController(this.dom.canvas, {
+      keyActions: { KeyE: 'interact', Enter: 'interact' },
+      blocked: this.blocked,
+      onAction: (action) => {
+        if (action === 'interact' && this.nearby) this.onPrompt?.('enter', this.nearby);
+      },
+    });
+    this.input.attach();
+  }
 
-    this._onKeyDown = (e) => {
-      if (e.repeat) return;
-      this.keys.add(e.code);
-      if (e.code === 'KeyE' || e.code === 'Enter') {
-        if (this.nearby) { e.preventDefault(); this.onPrompt?.('enter', this.nearby); }
-      }
-    };
-    this._onKeyUp = (e) => this.keys.delete(e.code);
-    this._onMouseDown = () => {
-      if (!this.pointerLocked) { this.dom.canvas.requestPointerLock?.(); this.dragging = true; }
-    };
-    this._onMouseUp = () => { this.dragging = false; };
-    this._onMouseMove = (e) => {
-      if (!this.pointerLocked && !this.dragging) return;
-      this.yaw -= (e.movementX ?? 0) * 0.0026;
-      this.pitch = Math.max(-0.5, Math.min(0.35, this.pitch - (e.movementY ?? 0) * 0.002));
-    };
-    this._onLockChange = () => { this.pointerLocked = document.pointerLockElement === this.dom.canvas; };
-
-    window.addEventListener('keydown', this._onKeyDown);
-    window.addEventListener('keyup', this._onKeyUp);
-    this.dom.canvas.addEventListener('mousedown', this._onMouseDown);
-    window.addEventListener('mouseup', this._onMouseUp);
-    window.addEventListener('mousemove', this._onMouseMove);
-    document.addEventListener('pointerlockchange', this._onLockChange);
+  applyLook() {
+    const { dx, dy } = this.input.consumeLook();
+    if (!dx && !dy) return;
+    this.yaw -= dx * 0.0026;
+    this.pitch = Math.max(-0.5, Math.min(0.35, this.pitch - dy * 0.002));
   }
 
   /* -------------------------------------------------------------- update */
 
   update(dt) {
     if (this.disposed) return;
-    const k = this.keys;
-    let fwd = 0, strafe = 0;
-    if (k.has('KeyW') || k.has('ArrowUp')) fwd += 1;
-    if (k.has('KeyS') || k.has('ArrowDown')) fwd -= 1;
-    if (k.has('KeyD') || k.has('ArrowRight')) strafe += 1;
-    if (k.has('KeyA') || k.has('ArrowLeft')) strafe -= 1;
+    this.applyLook();
 
+    const { fwd, strafe } = this.input.moveAxis();
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     let mx = sin * fwd + cos * strafe;
     let mz = cos * fwd - sin * strafe;
     const len = Math.hypot(mx, mz);
     if (len > 1) { mx /= len; mz /= len; }
 
-    const sprint = k.has('ShiftLeft') || k.has('ShiftRight') ? 1.7 : 1;
+    const sprint = this.input.isSprinting() ? 1.7 : 1;
     const speed = this.player.speed * sprint;
     const p = this.player.pos;
     p.x += mx * speed * dt;
@@ -360,13 +346,7 @@ export class VillageScene {
 
   dispose() {
     this.disposed = true;
-    window.removeEventListener('keydown', this._onKeyDown);
-    window.removeEventListener('keyup', this._onKeyUp);
-    this.dom.canvas.removeEventListener('mousedown', this._onMouseDown);
-    window.removeEventListener('mouseup', this._onMouseUp);
-    window.removeEventListener('mousemove', this._onMouseMove);
-    document.removeEventListener('pointerlockchange', this._onLockChange);
-    if (document.pointerLockElement === this.dom.canvas) document.exitPointerLock?.();
+    this.input?.detach();
     this.scene.traverse((o) => {
       if (o.isMesh) {
         o.geometry?.dispose?.();

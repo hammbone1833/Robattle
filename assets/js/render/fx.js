@@ -12,15 +12,17 @@ import * as THREE from '../../../vendor/three.module.js';
 const TMP = new THREE.Vector3();
 
 export class Fx {
-  constructor(scene, overlayEl) {
+  constructor(scene, overlayEl, quality = { sparkPool: 260, tracerCount: 160 }) {
     this.scene = scene;
     this.overlay = overlayEl;
+    this.quality = quality;
     this.time = 0;
 
     // --- tracers: one instanced mesh, matched to live projectiles every frame
     this.tracerGeo = new THREE.CapsuleGeometry(0.075, 0.42, 3, 6);
     this.tracerMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
-    this.tracers = new THREE.InstancedMesh(this.tracerGeo, this.tracerMat, 160);
+    this.maxTracers = quality.tracerCount;
+    this.tracers = new THREE.InstancedMesh(this.tracerGeo, this.tracerMat, this.maxTracers);
     this.tracers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.tracers.frustumCulled = false;
     this.tracers.count = 0;
@@ -34,7 +36,7 @@ export class Fx {
     this.sparkGeo = new THREE.BoxGeometry(0.11, 0.11, 0.11);
     this.sparks = [];
     this.sparkPool = [];
-    for (let i = 0; i < 260; i++) {
+    for (let i = 0; i < quality.sparkPool; i++) {
       const m = new THREE.Mesh(this.sparkGeo, new THREE.MeshBasicMaterial({ color: 0xffcc66 }));
       m.visible = false;
       scene.add(m);
@@ -76,7 +78,7 @@ export class Fx {
   /* ------------------------------------------------------------- tracers */
 
   syncProjectiles(projectiles) {
-    const n = Math.min(projectiles.length, 160);
+    const n = Math.min(projectiles.length, this.maxTracers);
     for (let i = 0; i < n; i++) {
       const p = projectiles[i];
       TMP.set(p.vx, p.vy, p.vz).normalize();

@@ -412,3 +412,197 @@ table.rank td.num { text-align: right; }
   #killfeed { display: none; }
   .action { width: 74px; }
 }
+
+/* ==========================================================================
+   Touch controls
+   --------------------------------------------------------------------------
+   Built at runtime only on touch devices. The left half of the screen is a
+   movement stick that appears wherever the thumb lands, the right half is
+   drag-to-look, and the action buttons sit under the right thumb.
+   ========================================================================== */
+
+#touch {
+  position: absolute; inset: 0; z-index: 25;
+  touch-action: none;                 /* no scrolling, no pinch-zoom mid-fight */
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.stick-base {
+  position: absolute; width: 124px; height: 124px; margin: -62px 0 0 -62px;
+  border: 2px solid rgba(255, 255, 255, .22); border-radius: 50%;
+  background: rgba(10, 13, 20, .3); pointer-events: none;
+}
+.stick-knob {
+  position: absolute; left: 50%; top: 50%; width: 54px; height: 54px;
+  margin: 0; transform: translate(-50%, -50%);
+  border-radius: 50%; background: rgba(255, 200, 97, .5);
+  border: 2px solid rgba(255, 232, 168, .8);
+}
+
+.touch-buttons {
+  position: absolute; right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: grid; gap: 10px; align-items: end;
+}
+.touch-buttons.arena {
+  grid-template-columns: repeat(3, auto);
+  grid-template-areas: ". force head" "larm . rarm" "larm legs rarm";
+}
+.touch-buttons.arena [data-action="rarm"] { grid-area: rarm; }
+.touch-buttons.arena [data-action="larm"] { grid-area: larm; }
+.touch-buttons.arena [data-action="head"] { grid-area: head; }
+.touch-buttons.arena [data-action="legs"] { grid-area: legs; }
+.touch-buttons.arena [data-action="medaforce"] { grid-area: force; }
+.touch-buttons.village { grid-template-columns: auto; }
+
+.touch-btn {
+  width: 62px; height: 62px; border-radius: 50%;
+  background: rgba(20, 24, 34, .72); border: 2px solid var(--line);
+  color: var(--ink); font-family: inherit; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; padding: 0; touch-action: none;
+  transition: transform .08s, background .12s;
+}
+.touch-btn.big { width: 78px; height: 78px; }
+.touch-btn .tb-label { font-size: 19px; font-weight: 800; line-height: 1; }
+.touch-btn .tb-sub { font-size: 8px; letter-spacing: .1em; color: var(--ink-faint); }
+.touch-btn.pressed { transform: scale(.92); background: rgba(255, 200, 97, .35); }
+.touch-btn.cool { opacity: .42; }
+.touch-btn.disabled, .touch-btn:disabled { opacity: .25; }
+.touch-btn.charged { border-color: var(--amber); box-shadow: 0 0 14px rgba(255, 200, 97, .45); }
+.touch-btn.force { border-color: var(--violet); }
+.touch-btn.enter { border-color: var(--amber); background: rgba(255, 200, 97, .22); }
+
+.touch-hint {
+  position: absolute; left: 50%; bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%); font-size: 10.5px; color: var(--ink-faint);
+  background: rgba(10, 13, 20, .6); padding: 5px 12px; border-radius: 99px;
+  pointer-events: none; white-space: nowrap;
+}
+
+/* The canvas must not scroll or zoom under a finger either. */
+#scene { touch-action: none; }
+
+.icon-btn {
+  background: rgba(27, 33, 48, .8); border: 1px solid var(--line); color: var(--ink-dim);
+  width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 15px;
+  display: none; align-items: center; justify-content: center; flex: none;
+}
+.icon-btn:hover { color: var(--ink); border-color: var(--amber); }
+body.touch .icon-btn { display: flex; }
+
+/* On touch the on-screen buttons replace the keyboard action bar entirely. */
+body.touch #action-bar { display: none; }
+body.touch #crosshair span { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; }
+
+/* ==========================================================================
+   Small screens
+   ========================================================================== */
+
+@media (max-width: 860px) {
+  #topbar { padding: 8px 10px; gap: 8px; padding-top: max(8px, env(safe-area-inset-top)); }
+  .brand-text { font-size: 14px; letter-spacing: .1em; }
+  .brand-sub { display: none; }
+
+  /* Seven destinations will not fit, so the row scrolls instead of wrapping. */
+  #nav {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; margin-left: 6px; padding-bottom: 2px;
+  }
+  #nav::-webkit-scrollbar { display: none; }
+  #nav button { padding: 6px 10px; font-size: 11.5px; white-space: nowrap; flex: none; }
+
+  .wallet { gap: 9px; }
+  .wallet-item strong { font-size: 13px; }
+  .wallet-label { font-size: 8.5px; }
+
+  #panels { padding: 60px 8px 8px; }
+  .panel { border-radius: 12px; }
+  .panel-head { padding: 12px 14px; }
+  .panel-head h2 { font-size: 16px; }
+  .panel-head .sub { display: none; }
+  .panel-body { padding: 14px; }
+  .panel-foot { padding: 10px 14px; flex-wrap: wrap; }
+
+  .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .garage { grid-template-columns: 1fr; gap: 14px; }
+  .bot-list { flex-direction: row; overflow-x: auto; gap: 8px; }
+  .bot-chip { flex: none; min-width: 150px; }
+
+  /* Three columns of part detail do not fit a phone; stack them. */
+  .slot-row { grid-template-columns: 1fr; gap: 6px; }
+  .slot-row select { width: 100%; }
+  .statline { gap: 3px 10px; }
+
+  table.rank { font-size: 11.5px; }
+  table.rank th:nth-child(3), table.rank td:nth-child(3) { display: none; }
+
+  #hud-teams { top: 54px; padding: 0 8px; gap: 8px; }
+  .team-panel { width: 40vw; max-width: 178px; }
+  .team-panel h3 { font-size: 9px; margin-bottom: 4px; }
+  .botcard { padding: 5px 7px; }
+  .botcard-name { font-size: 10.5px; }
+  .partbar { height: 6px; }
+  #killfeed { display: none; }
+  #battle-clock { font-size: 17px; top: 52px; }
+
+  #hud-bottom {
+    padding: 10px 12px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-left: max(12px, env(safe-area-inset-left));
+    gap: 10px;
+  }
+  #self-status { min-width: 0; flex: 1; max-width: 46vw; }
+  .self-name { font-size: 12px; }
+  #meters { min-width: 0; width: 42vw; max-width: 190px; }
+  .meter-label { width: 52px; font-size: 8px; }
+
+  /* Between the two team panels, beside the clock -- the only genuinely free strip on
+     a phone. Top-right put it straight on top of the opponent's armour bars. */
+  #forfeit {
+    bottom: auto; top: max(50px, calc(env(safe-area-inset-top) + 42px));
+    right: auto; left: 50%; margin-left: 46px;
+    padding: 4px 10px; font-size: 10.5px;
+  }
+  #prompt { bottom: 150px; min-width: 0; max-width: 88vw; padding: 10px 16px; }
+  .prompt-name { font-size: 14px; }
+  .prompt-blurb { font-size: 11.5px; }
+  #toasts { bottom: 150px; max-width: 92vw; }
+  .toast { font-size: 12px; padding: 8px 12px; }
+  .fx-label { font-size: 16px; }
+  .fx-hurt { font-size: 19px; }
+  #boot h1 { font-size: 28px; }
+}
+
+/* Landscape phones: very little vertical room, so the HUD hugs the edges. */
+/* The full slot names do not fit a phone; the abbreviations still read. */
+@media (max-width: 860px) {
+  .self-part .lbl { font-size: 8px; letter-spacing: .06em; }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  #topbar { padding: 4px 10px; }
+  #nav button { padding: 4px 8px; font-size: 11px; }
+  #hud-teams { top: 42px; }
+  .team-panel { max-width: 162px; }
+  .team-panel h3 { display: none; }
+  #battle-clock { top: 38px; font-size: 15px; }
+  #forfeit { top: 38px; }
+  #hud-bottom { padding: 6px 10px; }
+  .self-parts { margin-top: 3px; }
+  #panels { padding: 46px 8px 8px; }
+  .touch-btn { width: 54px; height: 54px; }
+  .touch-btn.big { width: 66px; height: 66px; }
+  .touch-hint { display: none; }
+}
+
+/* Portrait phones: the game is playable but landscape is better, so say so once. */
+#rotate-hint {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  z-index: 70; background: rgba(12, 14, 20, .94); border: 1px solid var(--line);
+  border-radius: 12px; padding: 14px 20px; text-align: center; font-size: 13px;
+  color: var(--ink-dim); max-width: 80vw; display: none;
+}
+#rotate-hint b { color: var(--ink); display: block; margin-bottom: 4px; }
+body.touch.portrait-hint #rotate-hint { display: block; }

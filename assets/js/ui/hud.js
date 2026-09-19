@@ -12,6 +12,7 @@ import { readyActions, canMedaforce, legStyle, MEDAFORCE_FULL } from '../core/co
 import { MEDAFORCE } from '../data/medals.js';
 
 const KEY_LABEL = { head: 'Q / 1', rarm: 'LMB / 2', larm: 'RMB / 3', legs: 'SPACE', medaforce: 'F' };
+const SHORT_LABELS = { head: 'HEAD', rarm: 'R.ARM', larm: 'L.ARM', legs: 'LEGS' };
 
 export class Hud {
   constructor(combat, arenaScene) {
@@ -86,7 +87,7 @@ export class Hud {
     for (const slot of SLOTS) {
       const fill = el('i');
       const box = el('div', { class: 'self-part' },
-        el('div', { class: 'lbl', text: SLOT_LABELS[slot].replace(' Arm', ' arm') }),
+        el('div', { class: 'lbl', text: SHORT_LABELS[slot] }),
         el('div', { class: 'bar' }, fill));
       this.selfParts[slot] = { box, fill };
       row.append(box);

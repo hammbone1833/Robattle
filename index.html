@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0e14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>ROBATTLE 3D — Medarra Circuit</title>
 <meta name="description" content="A browser robot-battler: build a medabot from parts and a medal, explore Medarra Village, and fight live 3D Robattles where the part you hit is the part that breaks.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,7 +33,9 @@
       <button data-panel="leaderboard">Ranks</button>
       <button data-panel="events">Events</button>
       <button data-panel="help">Help</button>
+      <button data-panel="settings">Settings</button>
     </nav>
+    <button id="fullscreen-btn" class="icon-btn" title="Fullscreen" aria-label="Toggle fullscreen">&#9974;</button>
     <div class="wallet">
       <div class="wallet-item"><span class="wallet-label">Rodo</span><strong id="stat-rodo">0</strong></div>
       <div class="wallet-item"><span class="wallet-label">Rating</span><strong id="stat-rating">0</strong></div>
@@ -66,6 +72,14 @@
     <div id="battle-clock">0:00</div>
     <div id="killfeed"></div>
     <button id="forfeit" title="Give up this Robattle">Forfeit</button>
+  </div>
+
+  <!-- On-screen controls, built at runtime for touch devices only -->
+  <div id="touch" class="hidden"></div>
+
+  <div id="rotate-hint">
+    <b>Turn your phone sideways</b>
+    ROBATTLE 3D plays best in landscape. Tap to dismiss.
   </div>
 
   <div id="panels" class="hidden" role="dialog" aria-modal="true"></div>

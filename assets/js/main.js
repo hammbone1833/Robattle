@@ -13,9 +13,12 @@ import { ratingDelta } from './core/leaderboard.js';
 import { VillageScene } from './render/village.js';
 import { ArenaScene } from './render/arena.js';
 import { Hud } from './ui/hud.js';
-import { el, openPanel, closePanel, panelIsOpen, toast } from './ui/shell.js';
+import { el, openPanel, closePanel, panelIsOpen, toast, confirmPanel } from './ui/shell.js';
+import { TouchControls, toggleFullscreen } from './ui/touch.js';
+import { loadSettings, resolveControls, resolveQuality, onSettingsChange } from './core/settings.js';
 import {
-  openGarage, openShop, openGym, openTournaments, openLeaderboard, openEvents, openHelp, openResults,
+  openGarage, openShop, openGym, openTournaments, openLeaderboard, openEvents, openHelp,
+  openSettings, openResults,
 } from './ui/panels.js';
 import { getOpponent, lootPool } from './data/roster.js';
 import { getCup } from './data/tournaments.js';
@@ -24,7 +27,7 @@ import { makeRng } from './core/rng.js';
 
 const PANELS = {
   garage: openGarage, shop: openShop, gym: openGym, tournaments: openTournaments,
-  leaderboard: openLeaderboard, events: openEvents, help: openHelp,
+  leaderboard: openLeaderboard, events: openEvents, help: openHelp, settings: openSettings,
 };
 
 class App {
@@ -37,19 +40,34 @@ class App {
     this.combat = null;
     this.hud = null;
     this.cup = null;
+    this.touch = null;
     this.lastFrame = performance.now();
+    this.settings = loadSettings();
+    this.quality = resolveQuality(this.settings);
+    /** 'keyboard' or 'touch' -- the detector's guess unless the player overrode it. */
+    this.controls = resolveControls(this.settings);
+    this.isTouch = this.controls === 'touch';
+    // Scenes must ignore input while a panel is up, or keys leak into the game behind it.
+    this.blocked = () => panelIsOpen();
   }
 
   /* ---------------------------------------------------------------- boot */
 
   start() {
     this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas, antialias: true, powerPreference: 'high-performance',
+      canvas: this.canvas,
+      antialias: this.quality.antialias,
+      powerPreference: 'high-performance',
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Phones report pixel ratios of 3 or more; rendering at native resolution there costs
+    // roughly nine times the fragments for a screen too small to show the difference.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.quality.maxPixelRatio));
+    this.renderer.shadowMap.enabled = this.quality.shadows;
+    this.renderer.shadowMap.type = this.quality.shadowMapSize > 512 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    document.body.classList.toggle('touch', this.isTouch);
+    onSettingsChange(() => this.applySettings());
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -57,22 +75,94 @@ class App {
     for (const btn of document.querySelectorAll('#nav button')) {
       btn.addEventListener('click', () => this.openPanel(btn.dataset.panel));
     }
+    document.getElementById('fullscreen-btn').addEventListener('click', async () => {
+      const on = await toggleFullscreen();
+      // The viewport changes size on the way in and out of fullscreen.
+      setTimeout(() => this.resize(), 120);
+      if (!on && this.isTouch) toast('Fullscreen is unavailable in this browser.', 'bad');
+    });
+    window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 250));
+    this.setupRotateHint();
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' && panelIsOpen()) { closePanel(); return; }
       // Number keys are weapons in a fight, so only treat them as shortcuts in the village.
       if (this.mode !== 'village' || panelIsOpen()) return;
-      const map = { KeyG: 'garage', KeyB: 'shop', KeyT: 'tournaments', KeyL: 'leaderboard', KeyV: 'events', KeyH: 'help' };
+      const map = { KeyG: 'garage', KeyB: 'shop', KeyT: 'tournaments', KeyL: 'leaderboard', KeyV: 'events', KeyH: 'help', KeyO: 'settings' };
       if (map[e.code]) this.openPanel(map[e.code]);
     });
 
     this.refreshStats();
     this.enterVillage();
+    this.applySettings();
 
     const boot = document.getElementById('boot');
     boot.classList.add('gone');
     setTimeout(() => boot.remove(), 600);
 
     this.loop();
+  }
+
+  /**
+   * Re-apply preferences without a reload. Control scheme and sensitivity switch live;
+   * the parts of a quality tier that are baked into a scene at build time (shadow map
+   * size, crowd count) come in with the next scene, which is said out loud rather than
+   * silently ignored.
+   */
+  applySettings() {
+    const settings = loadSettings();
+    const prevControls = this.controls;
+    const prevQuality = this.quality;
+
+    this.settings = settings;
+    this.controls = resolveControls(settings);
+    this.isTouch = this.controls === 'touch';
+    this.quality = resolveQuality(settings);
+    document.body.classList.toggle('touch', this.isTouch);
+
+    if (this.scene?.input) {
+      this.scene.input.sensitivity = settings.sensitivity;
+      this.scene.input.invertY = settings.invertY;
+      // A keyboard player wants the pointer captured; a touch player must never be.
+      this.scene.input.usePointerLock = this.controls === 'keyboard' && 'pointerLockElement' in document;
+      if (!this.scene.input.usePointerLock && document.pointerLockElement === this.canvas) {
+        document.exitPointerLock?.();
+      }
+    }
+
+    if (this.controls !== prevControls) {
+      this.touch?.dispose();
+      this.touch = null;
+      if (this.isTouch && this.scene?.input) {
+        this.touch = new TouchControls(this.scene.input, this.mode === 'battle' ? 'arena' : 'village');
+        if (this.mode === 'village') this.touch.setActionEnabled('interact', !!this.scene.nearby);
+      }
+    }
+
+    if (this.quality !== prevQuality) {
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.quality.maxPixelRatio));
+      this.renderer.shadowMap.enabled = this.quality.shadows;
+      this.renderer.shadowMap.needsUpdate = true;
+      this.resize();
+      if (this.mode === 'battle') toast('Graphics changed — fully applies from the next battle.');
+      else if (this.mode === 'village') this.enterVillage();
+    }
+  }
+
+  /**
+   * Portrait works, but a twin-stick game wants the wide axis. Nudge once, let the
+   * player dismiss it, and never nag again this session.
+   */
+  setupRotateHint() {
+    if (!this.isTouch) return;
+    const hint = document.getElementById('rotate-hint');
+    let dismissed = false;
+    const sync = () => {
+      const portrait = window.innerHeight > window.innerWidth;
+      document.body.classList.toggle('portrait-hint', portrait && !dismissed);
+    };
+    hint.addEventListener('click', () => { dismissed = true; sync(); });
+    window.addEventListener('resize', sync);
+    sync();
   }
 
   resize() {
@@ -88,14 +178,21 @@ class App {
     this.lastFrame = now;
 
     // A modal is a pause: no input reaches a scene the player cannot see.
-    if (!panelIsOpen() && this.scene) this.scene.update(dt);
+    const paused = panelIsOpen();
+    if (!paused && this.scene) this.scene.update(dt);
     if (this.hud) this.hud.update();
+    if (this.touch) {
+      this.touch.setVisible(!paused);
+      if (!paused && this.mode === 'battle') this.touch.syncArena(this.combat?.playerBot, this.combat);
+    }
     this.scene?.render();
   }
 
   /* -------------------------------------------------------------- scenes */
 
   disposeScene() {
+    this.touch?.dispose();
+    this.touch = null;
     this.hud?.dispose();
     this.hud = null;
     this.scene?.dispose();
@@ -112,8 +209,12 @@ class App {
 
     this.scene = new VillageScene(this.renderer, { canvas: this.canvas, overlay: this.overlay }, {
       loadout: this.state.loadoutOf(this.state.data.leader),
+      quality: this.quality,
+      blocked: this.blocked,
       onPrompt: (kind, landmark) => {
         if (kind === 'near') {
+          // The touch ENTER button only lights up when there is a door to go through.
+          this.touch?.setActionEnabled('interact', !!landmark);
           if (!landmark) { promptEl.classList.add('hidden'); return; }
           promptEl.querySelector('.prompt-name').textContent = landmark.label;
           promptEl.querySelector('.prompt-blurb').textContent = landmark.blurb;
@@ -123,13 +224,23 @@ class App {
         }
       },
     });
+    this.tuneSceneInput();
+    if (this.isTouch) this.touch = new TouchControls(this.scene.input, 'village');
     this.resize();
+  }
+
+  tuneSceneInput() {
+    const input = this.scene?.input;
+    if (!input) return;
+    input.sensitivity = this.settings.sensitivity;
+    input.invertY = this.settings.invertY;
+    input.usePointerLock = this.controls === 'keyboard' && 'pointerLockElement' in document;
   }
 
   openPanel(key) {
     const fn = PANELS[key];
     if (!fn) return;
-    if (this.mode === 'battle' && key !== 'help') {
+    if (this.mode === 'battle' && key !== 'help' && key !== 'settings') {
       toast('Finish the Robattle first.', 'bad');
       return;
     }
@@ -180,7 +291,9 @@ class App {
     combat.playerBotId = combat.teams[0].bots[this.state.data.leader].id;
     this.combat = combat;
 
-    this.scene = new ArenaScene(this.renderer, combat, { canvas: this.canvas, overlay: this.overlay });
+    this.scene = new ArenaScene(this.renderer, combat,
+      { canvas: this.canvas, overlay: this.overlay },
+      { quality: this.quality, blocked: this.blocked });
     this.scene.onRefused = (slot, why) => {
       // 'cooling' and 'busy' are the normal rhythm of the fight -- flash the button
       // instead of stacking toasts over the arena every time the player leans on a key.
@@ -190,10 +303,19 @@ class App {
       const words = { destroyed: 'That part is wrecked.', empty: 'No uses left on that head weapon.', 'no-energy': 'Not enough energy to boost.', 'not-charged': 'Medaforce is not charged yet.' };
       if (words[why]) toast(words[why], 'bad');
     };
+    this.tuneSceneInput();
+    if (this.isTouch) this.touch = new TouchControls(this.scene.input, 'arena');
     this.hud = new Hud(combat, this.scene);
     this.hud.setForfeitHandler(() => {
       if (combat.finished) return;
-      combat.forfeit(0);
+      // One stray thumb should not throw a Robattle away.
+      confirmPanel({
+        title: 'Forfeit this Robattle?',
+        message: 'You will lose the match, the prize money and any salvage. In a cup run it ends the whole cup.',
+        confirmLabel: 'Forfeit',
+        danger: true,
+        onConfirm: () => combat.forfeit(0),
+      });
     });
     this.resize();
 

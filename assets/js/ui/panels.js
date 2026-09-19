@@ -15,6 +15,9 @@ import { ARENAS } from '../data/arenas.js';
 import { CUPS, getCup, cupUnlocked } from '../data/tournaments.js';
 import { currentEvents, shopSeed, timeUntil } from '../data/events.js';
 import { standings, titleFor } from '../core/leaderboard.js';
+import {
+  loadSettings, saveSettings, CONTROL_CHOICES, QUALITY_CHOICES, detectedControls, resolveQuality,
+} from '../core/settings.js';
 import { makeRng } from '../core/rng.js';
 
 /* ----------------------------------------------------------------- pieces */
@@ -434,14 +437,35 @@ export function openEvents(app) {
 
 export function openHelp(app) {
   const key = (k, t) => el('div', { class: 'keyrow' }, el('kbd', { text: k }), el('b', { text: t }));
+  const touch = app.controls === 'touch';
+
+  const controlSection = touch
+    ? [
+        el('h3', { text: 'In the village' }),
+        el('div', { class: 'keys' },
+          key('Left side', 'Drag to walk'), key('Right side', 'Drag to look'),
+          key('E button', 'Enter a building'), key('⛶', 'Fullscreen')),
+        el('h3', { text: 'In a Robattle', style: 'margin-top:20px' }),
+        el('div', { class: 'keys' },
+          key('Left side', 'Move'), key('Right side', 'Aim'), key('R', 'Right arm'), key('L', 'Left arm'),
+          key('H', 'Head weapon'), key('»', 'Legs: dash or brace'), key('★', 'Medaforce')),
+        el('p', { class: 'faint', style: 'margin-top:10px' },
+          'Move and aim at the same time — one thumb per side. Landscape gives you far more room.'),
+      ]
+    : [
+        el('h3', { text: 'In the village' }),
+        el('div', { class: 'keys' },
+          key('W A S D', 'Walk'), key('Mouse', 'Look around'), key('Shift', 'Run'), key('E', 'Enter a building')),
+        el('h3', { text: 'In a Robattle', style: 'margin-top:20px' }),
+        el('div', { class: 'keys' },
+          key('W A S D', 'Move'), key('Mouse', 'Aim'), key('LMB / 2', 'Right arm'), key('RMB / 3', 'Left arm'),
+          key('Q / 1', 'Head weapon'), key('Space', 'Legs: dash or brace'), key('F', 'Medaforce'), key('Esc', 'Release the mouse')),
+      ];
+
   const body = el('div', {},
-    el('h3', { text: 'In the village' }),
-    el('div', { class: 'keys' },
-      key('W A S D', 'Walk'), key('Mouse', 'Look around'), key('Shift', 'Run'), key('E', 'Enter a building')),
-    el('h3', { text: 'In a Robattle', style: 'margin-top:20px' }),
-    el('div', { class: 'keys' },
-      key('W A S D', 'Move'), key('Mouse', 'Aim'), key('LMB / 2', 'Right arm'), key('RMB / 3', 'Left arm'),
-      key('Q / 1', 'Head weapon'), key('Space', 'Legs: dash or brace'), key('F', 'Medaforce'), key('Esc', 'Release the mouse')),
+    controlSection,
+    el('p', { class: 'faint', style: 'margin-top:8px' },
+      'Using something else? Change the control scheme in Settings.'),
     el('h3', { text: 'How a Robattle is won', style: 'margin-top:20px' }),
     el('ul', { class: 'muted', style: 'line-height:1.65;padding-left:20px' },
       el('li', { html: 'A medabot is <b>four separate parts</b> — head, right arm, left arm and legs — each with its own armour. Damage lands on whichever part your shot actually hit.' }),
@@ -473,6 +497,63 @@ export function openHelp(app) {
       }),
       el('button', { class: 'btn btn-primary', text: 'Got it', style: 'margin-left:auto', onclick: closePanel }),
     ],
+  });
+}
+
+/* --------------------------------------------------------------- settings */
+
+export function openSettings(app) {
+  const render = () => {
+    const s = loadSettings();
+
+    const chooser = (choices, current, key, extra) => el('div', { class: 'grid grid-2' },
+      choices.map((c) => el('div', {
+        class: `card selectable${current === c.id ? ' chosen' : ''}`,
+        onclick: () => { saveSettings({ [key]: c.id }); app.applySettings(); replaceBody(render()); },
+      },
+        el('div', { class: 'card-head' },
+          el('span', { class: 'card-title', text: c.label }),
+          current === c.id ? el('span', { class: 'card-tag', style: 'border-color:var(--amber);color:var(--amber)', text: 'Active' }) : null),
+        el('div', { class: 'card-blurb', text: c.blurb }),
+        c.id === 'auto' && extra ? el('div', { class: 'faint', style: 'margin-top:6px', text: extra }) : null)));
+
+    const sens = el('input', {
+      type: 'range', min: '0.4', max: '2.2', step: '0.1', value: String(s.sensitivity),
+      style: 'flex:1;min-width:180px',
+      oninput: (e) => {
+        saveSettings({ sensitivity: Number(e.target.value) });
+        app.applySettings();
+        e.target.parentElement.querySelector('.sens-value').textContent = `${Number(e.target.value).toFixed(1)}x`;
+      },
+    });
+
+    return el('div', {},
+      el('h3', { text: 'Controls' }),
+      chooser(CONTROL_CHOICES, s.controls, 'controls', `This device looks like: ${detectedControls() === 'touch' ? 'touch' : 'keyboard & mouse'}`),
+
+      el('h3', { text: 'Look sensitivity', style: 'margin-top:22px' }),
+      el('div', { style: 'display:flex;align-items:center;gap:12px' },
+        sens,
+        el('b', { class: 'sens-value', style: 'min-width:44px', text: `${s.sensitivity.toFixed(1)}x` })),
+      el('label', { class: 'keyrow', style: 'margin-top:10px;cursor:pointer' },
+        el('input', {
+          type: 'checkbox', checked: s.invertY ? true : null,
+          onchange: (e) => { saveSettings({ invertY: e.target.checked }); app.applySettings(); },
+        }),
+        el('b', { text: 'Invert vertical look' })),
+
+      el('h3', { text: 'Graphics', style: 'margin-top:22px' }),
+      chooser(QUALITY_CHOICES, s.quality, 'quality', `Auto picks: ${resolveQuality({ ...s, quality: 'auto' }).name}`),
+      el('p', { class: 'faint', style: 'margin-top:10px' },
+        'Lower settings turn off shadows, thin out the crowd and render at a lower resolution. Changing this mid-Robattle applies fully from the next battle.'));
+  };
+
+  openPanel({
+    title: 'Settings',
+    sub: 'Controls and graphics',
+    body: render(),
+    footer: [el('button', { class: 'btn btn-primary', text: 'Done', style: 'margin-left:auto', onclick: closePanel })],
+    wide: true,
   });
 }
 
