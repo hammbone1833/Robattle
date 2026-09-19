@@ -5,10 +5,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "python3 -m http.server 8777 --bind 127.0.0.1",
+    "start": "node tools/serve.mjs",
     "test": "node tests/combat.test.mjs && node tests/progression.test.mjs",
-    "balance": "node tests/simulate.mjs 30"
+    "balance": "node tests/simulate.mjs 30",
+    "serve": "node tools/serve.mjs"
   },
-  "keywords": ["game", "threejs", "webgl", "robot", "arena"],
+  "keywords": [
+    "game",
+    "threejs",
+    "webgl",
+    "robot",
+    "arena"
+  ],
   "license": "MIT"
 }

@@ -8,17 +8,56 @@ No build step, no bundler, no backend. Open `index.html` from any static host an
 
 ---
 
-## Running it
+## Playing it
+
+**Important:** you cannot play by double-clicking `index.html`. The game is built from ES
+modules and every browser refuses to load those over `file://`, so it has to be served
+over HTTP. That is the only requirement — there is nothing to compile and no packages to
+install.
+
+### Option 1 — GitHub Pages (no tools, playable from any device)
+
+In the repo on GitHub: **Settings → Pages → Source: "Deploy from a branch"**, pick the
+branch and `/ (root)`, and save. A minute later it is live at
+`https://<your-username>.github.io/Robattle/`. The game works correctly from a sub-path,
+so nothing needs changing. (Pages on a private repo needs a paid plan; public is free.)
+
+### Option 2 — run it locally
+
+Needs [Node](https://nodejs.org) installed. Nothing else, on any OS:
 
 ```bash
-npm start          # serves the folder at http://127.0.0.1:8777
-npm test           # 53 rule tests for the combat engine and progression
-npm run balance    # AI-vs-AI simulation harness, prints match length / win rates
+git clone -b claude/website-embedded-3d-game-6sumso https://github.com/hammbone1833/Robattle.git
+cd Robattle
+npm start           # then open http://localhost:8777
 ```
 
-Any static server works — it is plain ES modules plus a vendored copy of Three.js. There
-is nothing to compile and nothing to install to *play* it (`npm` is only used for the
-test scripts, which run on Node with no dependencies).
+`npm start` runs `tools/serve.mjs`, a ~50 line static server written against Node's
+standard library, so there is no `npm install` step and no Python dependency.
+
+Already have a static server you like? Anything works — `npx serve`, `python3 -m
+http.server`, VS Code's Live Server extension. Just serve the project root.
+
+### Development
+
+```bash
+npm test           # 53 rule tests for the combat engine and progression
+npm run balance    # AI-vs-AI simulation harness, prints match lengths and win rates
+```
+
+## First five minutes
+
+1. You start in the village plaza. **Click once** to capture the mouse, then **WASD** to
+   walk and the mouse to look around.
+2. Walk to the **GYM** on your right and press **E**. Run the target drill — the frames
+   move but never shoot back, so it is the place to learn where a head hitbox actually is.
+3. Go to the **GARAGE** (straight ahead from the fountain) and look at your three
+   medabots. You start with the cheapest chassis in the game and one spare Hornet
+   Repeater — fit it.
+4. Walk to the **ROBATTLE** hall and enter the **Rookie Cup**. It is free, and the first
+   opponent is deliberately a pushover.
+5. Winning pays Rodo and lets you strip a part off the losing team. Spend it in the
+   **PARTS** shop, then check the **EVENTS** tent for this week's exclusive.
 
 ## Controls
 
